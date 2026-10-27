@@ -1,0 +1,35 @@
+import { test, expect } from '@playwright/test';
+test('record, persistence, edit, backup restore, calendar and offline PWA',async({page,context})=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('/');await expect(page.getByRole('heading',{name:'おかえり、旅人さん'})).toBeVisible();
+ await page.screenshot({path:'/tmp/komorebi-home-ipad.png',fullPage:true});
+ await page.getByRole('button',{name:'相棒モクに話しかける'}).click();await expect(page.getByText('一歩ずつでいいんだよ。ボクも散歩から帰ったとこ。')).toBeVisible();
+ await page.getByRole('button',{name:'鍛錬を記録する',exact:true}).click();
+ await page.getByRole('textbox',{name:'種目名'}).fill('スクワット');
+ await page.getByRole('spinbutton',{name:'1セット目の重量'}).fill('20');await page.getByRole('spinbutton',{name:'1セット目の回数'}).fill('10');
+ await page.getByRole('button',{name:'セットを追加'}).click();await page.getByRole('spinbutton',{name:'2セット目の重量'}).fill('25');await page.getByRole('spinbutton',{name:'2セット目の回数'}).fill('8');
+ await page.screenshot({path:'/tmp/komorebi-record-ipad.png',fullPage:true});
+ await page.getByRole('button',{name:'この鍛錬を保存する'}).click();await expect(page.getByText('鍛錬を記録しました！ +40 XP')).toBeVisible();
+ await page.reload();await expect(page.getByText('スクワット',{exact:true})).toBeVisible();await expect(page.getByText('25kg × 8回')).toBeVisible();
+ await page.getByRole('button',{name:'スクワットの記録を編集'}).click();await page.getByRole('spinbutton',{name:'2セット目の回数'}).fill('9');await page.getByRole('button',{name:'記録を更新する'}).click();await expect(page.getByText('25kg × 9回')).toBeVisible();
+ await page.getByRole('button',{name:'設定・バックアップ'}).click();
+ const dl=page.waitForEvent('download');await page.getByRole('button',{name:'バックアップを書き出す'}).click();const download=await dl;const file=await download.path();expect(file).toBeTruthy();
+ await page.getByRole('button',{name:'スクワットの名前を変更'}).click();await page.getByRole('textbox',{name:'新しい種目名'}).fill('バーベルスクワット');await page.getByRole('button',{name:'種目名を保存'}).click();await expect(page.getByText('バーベルスクワット',{exact:true})).toBeVisible();
+ page.once('dialog',d=>d.accept());await page.locator('input[type=file]').setInputFiles(file!);await expect(page.getByText('バックアップから復元しました。')).toBeVisible();await expect(page.getByText('スクワット',{exact:true})).toBeVisible();
+ await page.getByRole('navigation',{name:'メインメニュー'}).getByRole('button',{name:'鍛錬のあしあと'}).click();await expect(page.getByText('25kg × 9回')).toBeVisible();
+ await page.evaluate(async()=>{await navigator.serviceWorker.ready;});await page.reload();
+ await context.setOffline(true);await page.reload();await expect(page.getByText('25kg × 9回')).toBeVisible();
+ await context.setOffline(false);await page.setViewportSize({width:390,height:844});await page.getByRole('navigation',{name:'モバイルメニュー'}).getByRole('button',{name:'森のホーム'}).click();await page.screenshot({path:'/tmp/komorebi-home-phone.png',fullPage:true});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ expect(errors).toEqual([]);
+});
+test('rest days, invalid restore, deletion and tablet portrait layout',async({page})=>{
+ await page.setViewportSize({width:820,height:1180});await page.goto('/');
+ await page.getByRole('button',{name:'今日は休息日にする'}).click();await expect(page.getByRole('button',{name:'休息日を記録済み'})).toBeVisible();
+ await page.reload();await expect(page.getByRole('button',{name:'休息日を記録済み'})).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await page.screenshot({path:'/tmp/komorebi-home-ipad-portrait.png',fullPage:true});
+ await page.getByRole('button',{name:'鍛錬を記録する',exact:true}).click();await page.getByRole('textbox',{name:'種目名'}).fill('腕立て伏せ');await page.getByRole('spinbutton',{name:'1セット目の重量'}).fill('0');await page.getByRole('spinbutton',{name:'1セット目の回数'}).fill('12');await page.getByRole('button',{name:'この鍛錬を保存する'}).click();await expect(page.getByText('鍛錬を記録しました！ +10 XP')).toBeVisible();await expect(page.getByRole('button',{name:'今日は休息日にする'})).toBeVisible();
+ await page.getByRole('button',{name:'設定・バックアップ'}).click();await page.locator('input[type=file]').setInputFiles({name:'broken.json',mimeType:'application/json',buffer:Buffer.from('{"version":99}')});await expect(page.getByRole('alert')).toContainText('対応するバックアップではありません。');await expect(page.getByText('腕立て伏せ',{exact:true})).toBeVisible();
+ page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'腕立て伏せの種目を削除'}).click();await expect(page.getByText('まだ種目はありません。')).toBeVisible();
+ await page.getByRole('navigation',{name:'メインメニュー'}).getByRole('button',{name:'森のホーム'}).click();await expect(page.getByText('腕立て伏せ',{exact:true})).toHaveCount(0);
+});
